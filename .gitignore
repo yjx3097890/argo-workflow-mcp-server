@@ -1,0 +1,42 @@
+# 依赖
+node_modules/
+package-lock.json
+yarn.lock
+
+# 构建输出
+dist/
+build/
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# Kubernetes 配置（包含敏感信息）
+.kiro/kubeconfig.yaml
+kubeconfig*.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
