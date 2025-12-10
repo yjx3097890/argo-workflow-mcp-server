@@ -289,6 +289,6 @@ npm run format
 
 ## 下一步
 
-- 实现健康检查端点（任务 8）
-- 创建 Docker 镜像（任务 9）
-- 部署到 Kubernetes（任务 10）
+- 创建 Docker 镜像
+- 部署到生产环境
+- 集成到 CI/CD 流水线

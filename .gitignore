@@ -40,3 +40,8 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+
+.kiro/
+.cursors/
+

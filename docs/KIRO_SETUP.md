@@ -23,7 +23,6 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "LOG_LEVEL": "info",
-        "HEALTH_PORT": "3000",
         "KUBECONFIG": "${workspaceFolder}/.kiro/kubeconfig.yaml"
       },
       "disabled": false,
@@ -38,7 +37,6 @@
 - `args`: 指向编译后的入口文件
 - `cwd`: 工作目录设置为项目根目录
 - `env.LOG_LEVEL`: 日志级别（error/warn/info/debug）
-- `env.HEALTH_PORT`: 健康检查端口
 - `env.KUBECONFIG`: Kubernetes 配置文件路径
 - `disabled`: 是否禁用此服务器
 - `autoApprove`: 自动批准的工具列表（空表示需要手动批准）
@@ -111,22 +109,7 @@ info: ✅ 测试通过
 
 ### 4. 验证服务器状态
 
-MCP 服务器启动后，你可以：
-
-1. **检查健康状态**:
-   ```bash
-   curl http://localhost:3000/health
-   ```
-
-2. **检查就绪状态**:
-   ```bash
-   curl http://localhost:3000/ready
-   ```
-
-3. **查看服务器信息**:
-   ```bash
-   curl http://localhost:3000/
-   ```
+MCP 服务器启动后，你可以通过 Kiro 的 MCP 面板查看服务器状态，或者查看日志输出确认服务器正常运行。
 
 ### 5. 使用 MCP 工具
 
@@ -212,14 +195,15 @@ AI: 让我查询 workflow 的状态...
 2. 确认用户有足够的 RBAC 权限
 3. 如果需要 token，在 kubeconfig 中添加有效的 token
 
-### 问题 4: 健康检查失败
+### 问题 4: MCP 服务器运行异常
 
-**症状**: `/health` 或 `/ready` 端点返回 503
+**症状**: 工具调用失败或服务器意外退出
 
 **解决方案**:
-1. 检查服务器日志
-2. 确认 Kubernetes 客户端初始化成功
+1. 检查服务器日志输出
+2. 确认 Argo Server 客户端初始化成功
 3. 检查 MCP Server 是否正常启动
+4. 验证命令行参数是否正确
 
 ## 高级配置
 

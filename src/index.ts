@@ -9,7 +9,6 @@ import { Command } from 'commander';
 import winston from 'winston';
 import { ArgoClient, ArgoClientConfig } from './services/index.js';
 import { MCPServer } from './mcp-server.js';
-import { HealthServer } from './health-server.js';
 
 // 配置日志级别和格式
 // 重要：MCP stdio 传输要求 stdout 只能用于 JSON-RPC 消息
@@ -42,7 +41,6 @@ const logger = winston.createLogger({
 });
 
 // 全局变量用于优雅关闭
-let healthServer: HealthServer | null = null;
 let isShuttingDown = false;
 
 /**
@@ -60,22 +58,6 @@ async function gracefulShutdown(signal: string): Promise<void> {
   logger.info(`收到 ${signal} 信号，开始优雅关闭...`);
 
   try {
-    // 设置健康检查为不健康状态
-    if (healthServer) {
-      healthServer.setHealthy(false);
-      healthServer.setReady(false);
-      logger.info('已标记服务为不健康状态');
-    }
-
-    // 等待一小段时间，让负载均衡器移除此实例
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 关闭健康检查服务器
-    if (healthServer) {
-      await healthServer.stop();
-      logger.info('健康检查服务器已关闭');
-    }
-
     logger.info('优雅关闭完成');
     process.exit(0);
   } catch (error) {
@@ -147,14 +129,6 @@ async function main() {
   });
   
   try {
-    // 获取健康检查端口配置
-    const healthPort = parseInt(process.env.HEALTH_PORT || '3000', 10);
-    
-    // 初始化健康检查服务器
-    healthServer = new HealthServer(healthPort, logger);
-    await healthServer.start();
-    logger.info('健康检查服务器已启动', { port: healthPort });
-    
     // 初始化 Argo Server 客户端
     logger.info('正在初始化 Argo Server 客户端...');
     const argoConfig: ArgoClientConfig = {
@@ -173,10 +147,6 @@ async function main() {
     await mcpServer.initialize();
     logger.info('MCP Server 初始化成功');
     
-    // 标记服务为就绪状态
-    healthServer.setReady(true);
-    logger.info('服务已标记为就绪状态');
-    
     // 启动 MCP Server（这会阻塞直到服务器关闭）
     logger.info('正在启动 MCP Server...');
     await mcpServer.start();
@@ -186,12 +156,6 @@ async function main() {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
-    
-    // 标记服务为不健康状态
-    if (healthServer) {
-      healthServer.setHealthy(false);
-      healthServer.setReady(false);
-    }
     
     throw error;
   }

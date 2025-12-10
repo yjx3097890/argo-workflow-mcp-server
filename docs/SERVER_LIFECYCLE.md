@@ -6,117 +6,62 @@
 
 服务器启动按以下顺序进行：
 
-### 1. 日志初始化
-- 配置日志级别（通过 `LOG_LEVEL` 环境变量）
+### 1. 命令行参数解析
+- 解析必需的 Argo Server 配置参数
+- 验证参数完整性和有效性
+- 设置默认值
+
+### 2. 日志初始化
+- 配置日志级别（通过 `--log-level` 参数或 `LOG_LEVEL` 环境变量）
 - 设置日志格式（时间戳、JSON 格式）
-- 配置控制台输出（带颜色）
+- 配置控制台输出（带颜色，输出到 stderr）
 
-### 2. 健康检查服务器启动
-- 启动 HTTP 服务器（默认端口 3000）
-- 注册健康检查端点：`/health`
-- 注册就绪检查端点：`/ready`
-- 初始状态：健康但未就绪
-
-### 3. Kubernetes 客户端初始化
-- 加载 Kubernetes 配置（集群内或 kubeconfig）
-- 验证与 Kubernetes API Server 的连接
-- 初始化 Custom Objects API 客户端
+### 3. Argo Server 客户端初始化
+- 使用提供的 Argo Server URL 和认证信息
+- 验证与 Argo Server 的连接
+- 初始化 HTTP 客户端
 
 ### 4. MCP Server 初始化
 - 创建 MCP Server 实例
-- 注册所有工具处理器
+- 注册所有工具处理器（8个工具）
 - 设置请求处理器
 
-### 5. 标记服务就绪
-- 将健康检查服务器标记为就绪状态
-- 此时 `/ready` 端点返回 200
-
-### 6. 启动 MCP Server
+### 5. 启动 MCP Server
 - 连接 stdio 传输层
 - 开始监听 MCP 协议请求
+- 服务器进入运行状态
 
-## 健康检查端点
 
-### `/health` - 健康检查
+## 运行状态
 
-**用途**: 检查服务是否健康运行
+服务器启动后进入运行状态：
 
-**响应**:
-```json
-// 健康状态 (200 OK)
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
+### MCP 协议处理
+- 监听 stdin 上的 MCP 协议消息
+- 解析 JSON-RPC 请求
+- 调用相应的工具处理器
+- 返回 JSON-RPC 响应到 stdout
 
-// 不健康状态 (503 Service Unavailable)
-{
-  "status": "unhealthy",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-```
+### 工具执行
+- 接收工具调用请求
+- 验证参数
+- 调用 Argo Server API
+- 格式化响应结果
 
-**使用场景**:
-- Kubernetes liveness probe
-- 监控系统健康检查
-- 负载均衡器健康检查
-
-### `/ready` - 就绪检查
-
-**用途**: 检查服务是否准备好接收请求
-
-**响应**:
-```json
-// 就绪状态 (200 OK)
-{
-  "status": "ready",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-
-// 未就绪状态 (503 Service Unavailable)
-{
-  "status": "not_ready",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-```
-
-**使用场景**:
-- Kubernetes readiness probe
-- 滚动更新期间的流量控制
-- 启动时的预热检查
-
-### `/` - 服务器信息
-
-**用途**: 获取服务器基本信息
-
-**响应**:
-```json
-{
-  "name": "Argo Workflow MCP Server",
-  "version": "1.0.0",
-  "status": "healthy",
-  "ready": "ready"
-}
-```
+### 错误处理
+- 捕获和记录所有错误
+- 返回结构化的错误响应
+- 维护服务稳定性
 
 ## 优雅关闭流程
 
 当服务器收到关闭信号（SIGINT、SIGTERM）时，执行以下步骤：
 
-### 1. 标记为不健康
-- 将健康检查状态设置为 `unhealthy`
-- 将就绪状态设置为 `not_ready`
-- 此时 `/health` 和 `/ready` 端点返回 503
+### 1. 设置关闭标志
+- 防止重复处理关闭信号
+- 记录关闭开始日志
 
-### 2. 等待排空
-- 等待 2 秒，让负载均衡器移除此实例
-- 允许正在处理的请求完成
-
-### 3. 关闭健康检查服务器
-- 停止接受新的 HTTP 连接
-- 关闭 HTTP 服务器
-
-### 4. 退出进程
+### 2. 退出进程
 - 记录关闭完成日志
 - 退出进程（退出码 0）
 
@@ -170,130 +115,80 @@
 2024-01-01 00:00:00 [info]: 服务器已启动
 ```
 
-## Kubernetes 集成
-
-### Liveness Probe
-
-```yaml
-livenessProbe:
-  httpGet:
-    path: /health
-    port: 3000
-  initialDelaySeconds: 10
-  periodSeconds: 30
-  timeoutSeconds: 5
-  failureThreshold: 3
-```
-
-**说明**:
-- 启动后 10 秒开始检查
-- 每 30 秒检查一次
-- 超时时间 5 秒
-- 连续失败 3 次后重启 Pod
-
-### Readiness Probe
-
-```yaml
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: 3000
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 2
-```
-
-**说明**:
-- 启动后 5 秒开始检查
-- 每 10 秒检查一次
-- 超时时间 3 秒
-- 连续失败 2 次后从 Service 移除
-
-### 优雅终止
-
-```yaml
-spec:
-  terminationGracePeriodSeconds: 30
-```
-
-**说明**:
-- Kubernetes 发送 SIGTERM 信号
-- 等待最多 30 秒让服务优雅关闭
-- 超时后发送 SIGKILL 强制终止
-
 ## 故障排查
 
 ### 服务无法启动
 
 **检查日志**:
 ```bash
-# 查看 Pod 日志
-kubectl logs <pod-name>
+# 查看服务器日志输出
+npm start 2>&1 | tee server.log
 
-# 查看启动错误
-kubectl describe pod <pod-name>
+# 或在 Kiro 中查看 MCP 服务器日志
 ```
 
 **常见原因**:
-- Kubernetes API 连接失败
-- 权限不足（RBAC 配置）
-- 端口已被占用
+- Argo Server 连接失败
+- 认证配置错误
+- 命令行参数缺失或无效
 
-### 健康检查失败
+### MCP 协议通信失败
 
-**检查健康端点**:
+**检查连接**:
 ```bash
-# 在 Pod 内检查
-kubectl exec <pod-name> -- curl http://localhost:3000/health
+# 验证 MCP 服务器是否正常启动
+ps aux | grep "argo-workflow-mcp-server"
 
-# 端口转发后检查
-kubectl port-forward <pod-name> 3000:3000
-curl http://localhost:3000/health
+# 检查 Kiro 的 MCP 连接状态
+# 在 Kiro 中查看 MCP 面板
 ```
 
 **常见原因**:
 - 服务未完全启动
-- Kubernetes 客户端初始化失败
-- 内部错误导致服务不健康
+- Argo Server 连接失败
+- 命令行参数配置错误
 
-### 就绪检查失败
+### 工具调用失败
 
-**检查就绪端点**:
+**检查 Argo Server 连接**:
 ```bash
-curl http://localhost:3000/ready
+# 测试 Argo Server 连接
+curl -k https://your-argo-server/api/v1/workflows/argo
+
+# 检查认证配置
+curl -k -H "Authorization: Bearer your-token" https://your-argo-server/api/v1/workflows/argo
 ```
 
 **常见原因**:
-- 服务正在启动中
-- Kubernetes 连接未建立
-- 依赖服务不可用
+- Argo Server 不可访问
+- 认证 token 无效或过期
+- 权限不足
 
 ## 最佳实践
 
-### 1. 合理配置探针
+### 1. 配置管理
 
-- **Liveness Probe**: 检测死锁和无响应状态
-- **Readiness Probe**: 检测服务是否准备好处理请求
-- 避免过于频繁的检查，以免增加系统负载
+- 使用环境变量或配置文件管理敏感信息
+- 不要在代码中硬编码 URL 和 token
+- 为不同环境使用不同的配置
 
 ### 2. 优雅关闭
 
-- 确保 `terminationGracePeriodSeconds` 足够长
-- 在关闭前标记为不健康，避免新请求
-- 等待现有请求完成
+- 确保服务能正确响应关闭信号
+- 记录关闭过程的日志
+- 避免强制终止导致的数据丢失
 
 ### 3. 日志管理
 
 - 生产环境使用 `info` 级别
 - 调试时使用 `debug` 级别
-- 使用结构化日志（JSON）便于分析
+- 所有日志输出到 stderr（MCP 要求）
 
-### 4. 监控
+### 4. 错误处理
 
-- 监控健康检查端点的响应时间
-- 设置告警：连续失败次数超过阈值
-- 监控优雅关闭的时长
+- 捕获并记录所有错误
+- 返回结构化的错误响应
+- 提供有用的错误信息帮助调试
 
 ## 示例配置
 
@@ -301,43 +196,15 @@ curl http://localhost:3000/ready
 
 ```bash
 export LOG_LEVEL=debug
-export HEALTH_PORT=3000
-npm start
+npm start -- --argo-server http://localhost:2746 --argo-insecure
 ```
 
 ### 生产环境
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argo-workflow-mcp-server
-spec:
-  replicas: 2
-  template:
-    spec:
-      containers:
-      - name: mcp-server
-        image: argo-workflow-mcp-server:latest
-        env:
-        - name: LOG_LEVEL
-          value: "info"
-        - name: HEALTH_PORT
-          value: "3000"
-        ports:
-        - containerPort: 3000
-          name: health
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 10
-      terminationGracePeriodSeconds: 30
+```bash
+export LOG_LEVEL=info
+npm start -- \
+  --argo-server https://argo-server.example.com \
+  --argo-token your-token \
+  --namespace argo
 ```
